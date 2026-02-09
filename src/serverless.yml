@@ -1,0 +1,229 @@
+# Welcome to Serverless!
+
+service: cb-account-deploy # NOTE: update this with your service name
+
+# You can pin your service to only deploy with a specific Serverless version
+# Check out our docs for more details
+# frameworkVersion: "=X.X.X"
+plugins:
+  - serverless-python-requirements
+  - serverless-associate-waf
+custom:
+  associateWaf:
+    name: ${ssm:cb_deploy_waf-${self:provider.stage}}
+    version: Regional
+  pythonRequirements:
+    dockerizePip: ${opt:docker, 'non-linux'}
+    layer:
+      name: ${opt:stage}-aggiecloud
+      description: Python requirements lambda layer
+      compatibleRuntimes:
+        - python3.9
+      allowedAccounts:
+        - '*'
+
+provider:
+  name: aws
+  logs:
+    restApi: true
+  runtime: python3.9
+  timeout: 120
+
+# you can overwrite defaults here
+  stage: ${opt:stage}
+  region: us-west-2
+
+  role: ${ssm:account_deploy_role-${self:provider.stage}}
+
+  vpc:
+    securityGroupIds:
+      - ${ssm:lambda_sg-${self:provider.stage}}
+      - ${ssm:www_out_sg-${self:provider.stage}}
+      - ${ssm:vpc_out_sg-${self:provider.stage}}
+    subnetIds:
+      - ${ssm:subnet_id_0-${self:provider.stage}}
+      - ${ssm:subnet_id_1-${self:provider.stage}}
+      - ${ssm:subnet_id_2-${self:provider.stage}}
+      - ${ssm:subnet_id_3-${self:provider.stage}}
+
+package:
+  include:
+    - cb-account-deploy-main.py
+    - cb-status-update-main.py
+    - cb-status-check-main.py
+    - cbADGroupDeploy.py
+    - input_mapping.json
+    - iam_policies.py
+    - pre_flight.py
+    - errors.py
+    - ddb.py
+    - aws.py
+    - db.py
+  exclude:
+    - venv/**
+    - node_modules/**
+
+functions:
+  group_deploy:
+    handler: cbADGroupDeploy.handler
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    timeout: 300
+    environment:
+      log_level: 'DEBUG'
+      uconnect_api_creds: ad_api-${self:provider.stage}
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+      ad_context: ${self:provider.stage}
+      alt_mail_ids: "@ucdavis.edu,@ad3.ucdavis.edu,@mail.t3.ucdavis.edu,@T3.UCDAVIS.EDU"
+      uinform_api_cycles: 10
+      uinform_api_tries: 10
+  account_update:
+    handler: cbAccountUpdate.handler
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    environment:
+      log_level: 'DEBUG'
+      metadata_bucket: ${ssm:cb_bucket-${self:provider.stage}}
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+      azure_create_lambda: ${self:service}-${self:provider.stage}-azure_create_trigger
+      uconnect_api_creds: ad_api-${self:provider.stage}
+      email_return_address: ${ssm:email-return-address-${self:provider.stage}}
+      ses_config_set: ${ssm:email-ses-config-set-${self:provider.stage}}
+      gd_welcome_template: ${self:provider.stage}-guardduty-welcome
+  account_deploy:
+    handler: cb-account-deploy-main.account_deploy
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    environment:
+      account_create_lambda: ${self:service}-${self:provider.stage}-account_create
+      tester_lambda: ${self:service}-${self:provider.stage}-deploy_tester
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+      sso_config_lambda: ${self:service}-${self:provider.stage}-account_sso
+    events:
+      - http:
+          path: cb-deploy
+          method: POST
+          integration: lambda
+          request:
+            passThrough: WHEN_NO_TEMPLATES
+            schemas:
+                application/json:
+                    schema: ${file(api_schema.json)}
+                    name: PostCreateEventSchema
+                    description: 'Validate data for creating accounts'
+            template:
+                application/x-www-form-urlencoded: null
+                application/json: null
+          private: true
+          template: null
+  azure_deploy:
+    handler: cb-azure-deploy-main.azure_deploy
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    timeout: 120
+    environment:
+      account_create_lambda: ${self:service}-${self:provider.stage}-account_create
+      tester_lambda: ${self:service}-${self:provider.stage}-deploy_tester
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+      sso_config_lambda: ${self:service}-${self:provider.stage}-account_sso
+      azure_secret: azure_api-${self:provider.stage}
+      uconnect_api_creds: ad_api-${self:provider.stage}
+      azure_create_lambda: ${self:service}-${self:provider.stage}-azure_create_trigger
+      env: ${self:provider.stage}
+      log_level: 'DEBUG'
+    events:
+      - http:
+          path: cb-azure
+          method: POST
+          integration: lambda
+          request:
+            passThrough: WHEN_NO_MATCH
+          private: true
+          template: null
+  azure_create_trigger:
+    handler: cb-azure-create-trigger.handler
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    timeout: 600
+    environment:
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+      sso_config_lambda: ${self:service}-${self:provider.stage}-account_sso
+      azure_secret: azure_api-${self:provider.stage}
+      uconnect_api_creds: ad_api-${self:provider.stage}
+      env: ${self:provider.stage}
+  status_check:
+    handler: cb-status-check-main.status_check
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    environment:
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+    events:
+      - http:
+          path: cb-status
+          method: GET
+          private: true
+  status_update:
+    handler: cb-status-update-main.status_update
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    environment:
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+  account_create:
+    handler: cb-account-create-main.handler
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    timeout: 300
+    environment:
+      metadata_bucket: ${ssm:cb_bucket-${self:provider.stage}}
+      sso_config_lambda: ${self:service}-${self:provider.stage}-account_sso
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+  account_remove:
+    handler: cb-remove-account-config.handler
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    timeout: 120
+    environment:
+      metadata_bucket: ${ssm:cb_bucket-${self:provider.stage}}
+      log_level: "DEBUG"
+      cb_root_org: ${ssm:cb_org_root-${self:provider.stage}}
+      cb_basic_ou: ${ssm:cb_basic_ou-${self:provider.stage}}
+      ad_group_lambda: ${self:service}-${self:provider.stage}-group_deploy
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+      azure_create_lambda: ${self:service}-${self:provider.stage}-azure_create_trigger
+    events:
+      - http:
+          path: cb-deploy
+          method: DELETE
+          integration: lambda
+          request:
+            passThrough: WHEN_NO_MATCH
+          private: true
+          template: null
+  account_sso:
+    handler: cb-account-sso-main.handler
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    timeout: 600
+    environment:
+      metadata_bucket: ${ssm:cb_bucket-${self:provider.stage}}
+      ad_group_lambda: ${self:service}-${self:provider.stage}-group_deploy
+      cb_root_org: ${ssm:cb_org_root-${self:provider.stage}}
+      cb_basic_ou: ${ssm:cb_basic_ou-${self:provider.stage}}
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
+      azure_create_lambda: ${self:service}-${self:provider.stage}-azure_create_trigger
+    events:
+      - http:
+          path: cb-sso-config
+          method: PUT
+          integration: lambda
+          request:
+            passThrough: WHEN_NO_MATCH
+          private: true
+          template: null
+  deploy_tester:
+    handler: cb-deploy-tester.handler
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+    timeout: 600
+    environment:
+      ddb_name: ${ssm:${self:provider.stage}-aggiecloud-accounts-ddb-table}
