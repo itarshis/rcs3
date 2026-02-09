@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "serverless-associate-waf": "^1.2.1",
+    "serverless-python-requirements": "^5.1.1"
+  }
+}

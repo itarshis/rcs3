@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "required": [
+    "project_name",
+    "new_existing_account",
+    "account_point_of_contact_email",
+    "primary_account_email",
+    "budget_authority_email",
+    "separate_billing_contact",
+    "separate_technical_contact",
+    "technical_contact_email",
+    "uc_davis_account_number",
+    "estimated_spend",
+    "data_types",
+    "protection_level_classification",
+    "availability_level_classification",
+    "confirm_authorization",
+    "confirm_purpose",
+    "confirm_data",
+    "cloud_provider",
+    "request_number",
+    "received from",
+    "submitted_by_user"
+  ],
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Nickname for the project account being deployed"
+    },
+    "new_existing_account": {
+      "type": "string",
+      "description": "A sentence from the account creation form indicating whether the request is to migrate an existing account or create a new account"
+    },
+    "account_point_of_contact_email": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The primary account administrator and point-of-contact"
+    },
+    "primary_account_email": {
+      "type": "string",
+      "description": "The contact for processing the account request and for questions regarding the account"
+    },
+    "budget_authority_email": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The person authorized to use the UC Davis billing code included in the payload. Added to the billing read group"
+    },
+    "separate_billing_contact": {
+      "type": "string",
+      "description": "The contact that should be used if an alternate billing contact is indicated"
+    },
+    "separate_technical_contact": {
+      "type": "string",
+      "description": "The contact that should be used if an alternate technical contact is indicated"
+    },
+    "estimated_spend": {
+      "type": "string",
+      "description": "The amount the group expects to spend monthly on the cloud account"
+    },
+    "data_types": {
+      "type": "string",
+      "description": "The data types that will be stored in the cloud account"
+    },
+    "protection_level_classification": {
+      "enum": ["P1 - Minimal", "P2 - Low", "P3 - Moderate", "P4 - High"],
+      "description": "The IS-3 P-level classification of the data"
+    },
+    "availability_level_classification": {
+      "enum": ["A1 - Minimal", "A2 - Low", "A3 - Moderate", "A4 - High"],
+      "description": "The IS-3 A-level classification of the data"
+    },
+    "confirm_authorization": {
+      "enum": ["true"],
+      "description": "Confirmation that the submitter is authorized to request an account"
+    },
+    "confirm_purpose": {
+      "enum": ["true"],
+      "description": "Confirmation that the purpose of the cloud account has been accurately attested"
+    },
+    "confirm_data": {
+      "enum": ["true"],
+      "description": "Confirmation that the data types being stored in the account have been accurately described"
+    },
+    "cloud_provider": {
+      "enum": ["aws", "az"],
+      "description": "An abbreviation of the cloud provider in which the account is being provisioned"
+    },
+    "request_number": {
+      "type": "string",
+      "description": "The ServiceNow reqeust ID number (the RITM)"
+    },
+    "received from": {
+      "type": "string",
+      "description": "The user approving the form submission"
+    },
+    "submitted_by_user": {
+      "type": "string",
+      "description": "The user who approved the form submission"
+    }
+  }
+}
